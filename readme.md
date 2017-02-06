@@ -1,1 +1,1 @@
-# PPT�q������A�֤߬�Arduino
+﻿# PPT段落控制器，核心為Arduino
