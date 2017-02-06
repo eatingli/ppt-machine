@@ -1,33 +1,35 @@
+#include "button.h"
 
 //index
-const byte BTN_MODE[4] = {3, 1, 11, 9};
-const byte BTN_SET[2] = {19, 17};
-const byte BTN_FN[6] = {2, 0, 10, 8, 18, 16};
-const byte BTN_PART[8] = {4, 5, 6, 7, 12, 13, 14, 15};
-const byte BTN_COMMON[2] = {22, 23};
+const byte PIN_BTN_MODES[4] = {3, 1, 11, 9};
+const byte RECORD_BTN_PIN[2] = {19, 17};
+const byte FN_BTN_PIN[6] = {2, 0, 10, 8, 18, 16};
+const byte PART_BTN_PIN[8] = {4, 5, 6, 7, 12, 13, 14, 15};
+const byte COMMON_BTN_PIN[2] = {22, 23};
 
-const byte LED_B_MODE[4] = {16, 19, 21, 23};
-const byte LED_B_STATUS[2] = {3, 7};
-const byte LED_B_PART[8] = {9, 11, 13, 15, 25, 27, 29, 31};
-const byte LED_B_COMMON[2] = {1, 5};
+const byte MODE_LED_PIN[4] = {16, 19, 21, 23};
+const byte STATUS_LED_PINTUS[2] = {3, 7};
+const byte PART_LED_PIN[8] = {9, 11, 13, 15, 25, 27, 29, 31};
+const byte COMMON_LED_PIN[2] = {1, 5};
 
-const byte LED_R_MODE[4] = {17, 18, 20, 22};
-const byte LED_R_STATUS[2] = {2, 6};
-const byte LED_R_PART[8] = {8, 10, 12, 14, 24, 26, 28, 30};
-const byte LED_R_COMMON[2] = {0, 4};
+//紅色LED(已棄用)
+//const byte LED_R_MODE[4] = {17, 18, 20, 22};
+//const byte LED_R_STATUS[2] = {2, 6};
+//const byte LED_R_PART[8] = {8, 10, 12, 14, 24, 26, 28, 30};
+//const byte LED_R_COMMON[2] = {0, 4};
 
 //模式
 const String MODE_STRING[4] = {"Ctrl", "Edit", "Shift", "Config"};
 byte currentMode = 0;
 
 //組合(Record)
-const byte SET_LENGTH = 25;
-byte currentSet = 0;
+const byte RECORD_LENGTH = 25;
+byte currentRecord = 0;
 
 //頁數
 const short MAX_PAGE = 999;
-short setsPage[8][SET_LENGTH] = {}; //各set頁數 (預設值應該設為1)
-short commonsPage[2] = {}; //共用頁數
+short records[8][RECORD_LENGTH] = {}; //各set頁數 (預設值應該設為1)
+short commonsRecords[2] = {}; //共用頁數
 
 //LED狀態 0關 1開 2閃爍 3一閃
 byte ledsStatus[32] = {};
@@ -70,17 +72,7 @@ boolean shihtAble[8] = {true, true, true, true, true, true, true, true};
 const byte KEYPAD_PIN = A0;
 const byte KEYPAD_NUMBER[17] = {0, 1, 2, 3, 0 , 4 , 5 , 6 , 0 , 7 , 8 , 9, 0, 0, 0, 0, 0};
 
-//Button 74HC165
-#define NUMBER_OF_SHIFT_CHIPS   3
-#define DATA_WIDTH   NUMBER_OF_SHIFT_CHIPS * 8
-#define PULSE_WIDTH_USEC   20
-#define POLL_DELAY_MSEC   1
-#define BYTES_VAL_T unsigned long
 
-const byte btnClockEnablePin  = 4;  // Connects to Clock Enable pin the 165
-const byte btnDataPin         = 5; // Connects to the Q7 pin the 165
-const byte btnClockPin        = 6; // Connects to the Clock pin the 165
-const byte btnPloadPin        = 7;  // Connects to Parallel load pin the 165
 
 BYTES_VAL_T pinValues;
 BYTES_VAL_T oldPinValues;
@@ -95,31 +87,7 @@ const byte dataPin = 10;
 const byte latchPin = 9;
 const byte clockPin = 8;
 
-//按鈕: 讀取狀態
-BYTES_VAL_T read_shift_regs()
-{
-  long bitVal;
-  BYTES_VAL_T bytesVal = 0;
 
-  digitalWrite(btnClockEnablePin, HIGH);
-  digitalWrite(btnPloadPin, LOW);
-  delayMicroseconds(PULSE_WIDTH_USEC);
-  digitalWrite(btnPloadPin, HIGH);
-  digitalWrite(btnClockEnablePin, LOW);
-
-  for (int i = 0; i < DATA_WIDTH; i++)
-  {
-    bitVal = digitalRead(btnDataPin);
-
-    bytesVal |= (bitVal << ((DATA_WIDTH - 1) - i));
-
-    digitalWrite(btnClockPin, HIGH);
-    delayMicroseconds(PULSE_WIDTH_USEC);
-    digitalWrite(btnClockPin, LOW);
-  }
-
-  return (bytesVal);
-}
 
 //按鈕:透過index來檢查該按鈕是否按下
 boolean isClickDown(byte index) {
@@ -152,21 +120,21 @@ void saveSetData(byte setIndex)
 {
   int addr = setIndex * 8;
   for (byte i = 0; i < 8; i++) {
-    EEPROMWriteShort(addr++, setsPage[i][setIndex]);
+    EEPROMWriteShort(addr++, records[i][setIndex]);
   }
 }
 
 void saveCommonData()
 {
-  int addr = SET_LENGTH * 8;
-  EEPROMWriteShort(addr++, commonsPage[0]);
-  EEPROMWriteShort(addr++, commonsPage[1]);
+  int addr = RECORD_LENGTH * 8;
+  EEPROMWriteShort(addr++, commonsRecords[0]);
+  EEPROMWriteShort(addr++, commonsRecords[1]);
 }
 
 //存檔組合
 void saveCurrentData()
 {
-  saveSetData(currentSet);
+  saveSetData(currentRecord);
   saveCommonData();
 }
 
@@ -175,15 +143,15 @@ void saveData()
   int addr = 0;
 
   //寫入Part資料
-  for (byte i = 0; i < SET_LENGTH; i++) {
+  for (byte i = 0; i < RECORD_LENGTH; i++) {
     for (byte j = 0; j < 8; j++) {
-      EEPROMWriteShort(addr++, setsPage[j][i]);
+      EEPROMWriteShort(addr++, records[j][i]);
     }
   }
 
   //寫入Common資料
-  EEPROMWriteShort(addr++, commonsPage[0]);
-  EEPROMWriteShort(addr++, commonsPage[1]);
+  EEPROMWriteShort(addr++, commonsRecords[0]);
+  EEPROMWriteShort(addr++, commonsRecords[1]);
 }
 
 void readData()
@@ -191,15 +159,15 @@ void readData()
   int addr = 0;
 
   //讀取Part資料
-  for (byte i = 0; i < SET_LENGTH; i++) {
+  for (byte i = 0; i < RECORD_LENGTH; i++) {
     for (byte j = 0; j < 8; j++) {
-      setsPage[j][i] = EEPROMReadShort(addr++);
+      records[j][i] = EEPROMReadShort(addr++);
     }
   }
 
   //讀取Common資料
-  commonsPage[0] = EEPROMReadShort(addr++);
-  commonsPage[1] = EEPROMReadShort(addr++);
+  commonsRecords[0] = EEPROMReadShort(addr++);
+  commonsRecords[1] = EEPROMReadShort(addr++);
 }
 
 void clearDada() {
@@ -225,10 +193,10 @@ void oneBlinkLed(byte index, int blinkTime) {
 void btnEvent(unsigned long nowTime) {
   //Mode 按鈕
   for (byte i = 0; i < 4; i++) {
-    if (isClickDown(BTN_MODE[i])) {
+    if (isClickDown(PIN_BTN_MODES[i])) {
       //更新Mode Led
-      //ledsStatus[LED_B_MODE[currentMode]] = 0;
-      //ledsStatus[LED_B_MODE[i]] = 1;
+      //ledsStatus[MODE_LED_PIN[currentMode]] = 0;
+      //ledsStatus[MODE_LED_PIN[i]] = 1;
       //修改當前Mode
       currentMode = i;
       Serial.println("Mode: " + String(i));
@@ -238,34 +206,34 @@ void btnEvent(unsigned long nowTime) {
     }
   }
 
-  //Set 按鈕, 增減currentSet
-  if (isClickDown(BTN_SET[0]) && currentSet > 0) {
-    currentSet--;
-    Serial.print("currentSet: ");
-    Serial.println(currentSet);
+  //Set 按鈕, 增減currentRecord
+  if (isClickDown(RECORD_BTN_PIN[0]) && currentRecord > 0) {
+    currentRecord--;
+    Serial.print("currentRecord: ");
+    Serial.println(currentRecord);
   }
-  if (isClickDown(BTN_SET[1]) && currentSet < SET_LENGTH - 1) {
-    currentSet++;
-    Serial.print("currentSet: ");
-    Serial.println(currentSet);
+  if (isClickDown(RECORD_BTN_PIN[1]) && currentRecord < RECORD_LENGTH - 1) {
+    currentRecord++;
+    Serial.print("currentRecord: ");
+    Serial.println(currentRecord);
   }
 
   //FN按鈕
-  if (isClickDown(BTN_FN[0])) {
+  if (isClickDown(FN_BTN_PIN[0])) {
     Serial.println("FN-0");
     switch (currentMode) {
       case 0:
         //送出控制
         keyControl(-3);
-        oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+        oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
         highLightLcd("", "Fn:PageUp", LCD_BLINK_TIME);
         break;
       case 1:
         //單獨減1
         if (editingPart < 8) {
-          if (setsPage[editingPart][currentSet] > 0) setsPage[editingPart][currentSet] --;
+          if (records[editingPart][currentRecord] > 0) records[editingPart][currentRecord] --;
         } else {
-          if (commonsPage[editingPart - 8] > 0) commonsPage[editingPart - 8] --;
+          if (commonsRecords[editingPart - 8] > 0) commonsRecords[editingPart - 8] --;
         }
         //儲存
         saveCurrentData();
@@ -273,29 +241,29 @@ void btnEvent(unsigned long nowTime) {
       case 2:
         //群體減1
         for (byte i = 0; i < 8; i++) {
-          int page = setsPage[i][currentSet];
-          if (shihtAble[i] && page > 0) setsPage[i][currentSet] = page - 1;
+          int page = records[i][currentRecord];
+          if (shihtAble[i] && page > 0) records[i][currentRecord] = page - 1;
         }
         //儲存
         saveCurrentData();
         break;
     }
   }
-  if (isClickDown(BTN_FN[1])) {
+  if (isClickDown(FN_BTN_PIN[1])) {
     Serial.println("FN-1");
     switch (currentMode) {
       case 0:
         //送出控制
         keyControl(-4);
-        oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+        oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
         highLightLcd("", "Fn:PageDown", LCD_BLINK_TIME);
         break;
       case 1:
         //單獨加1
         if (editingPart < 8) {
-          if (setsPage[editingPart][currentSet] < MAX_PAGE) setsPage[editingPart][currentSet] ++;
+          if (records[editingPart][currentRecord] < MAX_PAGE) records[editingPart][currentRecord] ++;
         } else {
-          if (commonsPage[editingPart - 8] < MAX_PAGE) commonsPage[editingPart - 8] ++;
+          if (commonsRecords[editingPart - 8] < MAX_PAGE) commonsRecords[editingPart - 8] ++;
         }
         //儲存
         saveCurrentData();
@@ -303,21 +271,21 @@ void btnEvent(unsigned long nowTime) {
       case 2:
         //群體加1
         for (byte i = 0; i < 8; i++) {
-          int page = setsPage[i][currentSet];
-          if (shihtAble[i] && page > 0 && page < MAX_PAGE) setsPage[i][currentSet] = page + 1;
+          int page = records[i][currentRecord];
+          if (shihtAble[i] && page > 0 && page < MAX_PAGE) records[i][currentRecord] = page + 1;
         }
         //儲存
         saveCurrentData();
         break;
     }
   }
-  if (isClickDown(BTN_FN[2])) {
+  if (isClickDown(FN_BTN_PIN[2])) {
     Serial.println("FN-2");
     switch (currentMode) {
       case 0:
         //送出控制
         keyControl(-5);
-        oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+        oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
         highLightLcd("", "Fn:Black", LCD_BLINK_TIME);
         break;
       case 1:
@@ -327,33 +295,33 @@ void btnEvent(unsigned long nowTime) {
         break;
     }
   }
-  if (isClickDown(BTN_FN[3])) {
+  if (isClickDown(FN_BTN_PIN[3])) {
     Serial.println("FN-3");
     switch (currentMode) {
       case 0:
         //送出控制
         keyControl(-6);
-        oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+        oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
         highLightLcd("", "Fn:Write", LCD_BLINK_TIME);
         break;
     }
   }
-  if (isClickDown(BTN_FN[4])) {
+  if (isClickDown(FN_BTN_PIN[4])) {
     Serial.println("FN-4");
     switch (currentMode) {
       case 0:
         keyControl(-1);
-        oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+        oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
         highLightLcd("", "Fn:Start", LCD_BLINK_TIME);
         break;
     }
   }
-  if (isClickDown(BTN_FN[5])) {
+  if (isClickDown(FN_BTN_PIN[5])) {
     Serial.println("FN-5");
     switch (currentMode) {
       case 0:
         keyControl(-2);
-        oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+        oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
         highLightLcd("", "Fn:Stop", LCD_BLINK_TIME);
         break;
     }
@@ -361,8 +329,8 @@ void btnEvent(unsigned long nowTime) {
 
   //part按鈕
   for (byte i = 0; i < 8; i++) {
-    if (isClickDown(BTN_PART[i])) {
-      short page = setsPage[i][currentSet];
+    if (isClickDown(PART_BTN_PIN[i])) {
+      short page = records[i][currentRecord];
       switch (currentMode) {
         case 0:
           //送出控制
@@ -371,7 +339,7 @@ void btnEvent(unsigned long nowTime) {
           //頁數大於0檢查
           if (page > 0) {
             keyPage(page);
-            oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+            oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
             highLightLcd("", "GoTo:" + String(page), LCD_BLINK_TIME);
           } else {
             highLightLcd("", "Enpty", LCD_BLINK_TIME);
@@ -393,8 +361,8 @@ void btnEvent(unsigned long nowTime) {
 
   //Common按鈕
   for (byte i = 0; i < 2; i++) {
-    if (isClickDown(BTN_COMMON[i])) {
-      short page = commonsPage[i];
+    if (isClickDown(COMMON_BTN_PIN[i])) {
+      short page = commonsRecords[i];
       switch (currentMode) {
         case 0:
           //送出控制
@@ -403,7 +371,7 @@ void btnEvent(unsigned long nowTime) {
           //頁數大於0檢查
           if (page > 0) {
             keyPage(page);
-            oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+            oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
             highLightLcd("", "GoTo:" + String(page), LCD_BLINK_TIME);
           } else {
             highLightLcd("", "Enpty", LCD_BLINK_TIME);
@@ -476,7 +444,7 @@ void keypadEvent()
           if (inputPage > 0) {
             Serial.println("Input Ctrl " + String(inputPage));
             keyPage(inputPage);
-            oneBlinkLed(LED_B_STATUS[0], LED_ONE_BLINK_TIME);
+            oneBlinkLed(STATUS_LED_PINTUS[0], LED_ONE_BLINK_TIME);
             inputPage = 0;
           }
           break;
@@ -484,7 +452,7 @@ void keypadEvent()
       break;
     case 1:
       //編輯頁數
-      short newPage = editingPart < 8 ? setsPage[editingPart][currentSet] : commonsPage[editingPart - 8];
+      short newPage = editingPart < 8 ? records[editingPart][currentRecord] : commonsRecords[editingPart - 8];
       switch (key) {
         case 1:
         case 2:
@@ -525,9 +493,9 @@ void keypadEvent()
       }
 
       if (editingPart < 8)
-        setsPage[editingPart][currentSet] = newPage;
+        records[editingPart][currentRecord] = newPage;
       else
-        commonsPage[editingPart - 8] = newPage;
+        commonsRecords[editingPart - 8] = newPage;
       //儲存
       saveCurrentData();
       break;
@@ -594,7 +562,7 @@ void updateLcd(unsigned long nowTime)
   //左上角Set(Record)
   lcd.home();
   lcd.print("Record-");
-  lcd.print(currentSet + 1);
+  lcd.print(currentRecord + 1);
 
   //右上角Mode
   //lcd.setCursor(16 - String(currentMode).length(), 0);
@@ -614,15 +582,15 @@ void updateLcd(unsigned long nowTime)
       //editingPart頁數
       lcd.setCursor(0, 1);
       if (editingPart < 8)
-        lcd.print("Part_" + String(editingPart + 1) + ":" + (setsPage[editingPart][currentSet] > 0 ? String(setsPage[editingPart][currentSet]) : "_"));
+        lcd.print("Part_" + String(editingPart + 1) + ":" + (records[editingPart][currentRecord] > 0 ? String(records[editingPart][currentRecord]) : "_"));
       else
-        lcd.print("Common_" + String(editingPart - 7) + ":" + (commonsPage[editingPart - 8] > 0 ? String(commonsPage[editingPart - 8]) : "_"));
+        lcd.print("Common_" + String(editingPart - 7) + ":" + (commonsRecords[editingPart - 8] > 0 ? String(commonsRecords[editingPart - 8]) : "_"));
       break;
     case 2:
       //計算最小頁數
       unsigned int minValue = MAX_PAGE;
       for (byte i = 0; i < 8; i++) {
-        if (setsPage[i][currentSet] > 0)  minValue = min(minValue, setsPage[i][currentSet]);
+        if (records[i][currentRecord] > 0)  minValue = min(minValue, records[i][currentRecord]);
       }
       //顯示最小頁數
       lcd.setCursor(0, 1);
@@ -683,47 +651,49 @@ void loop()
   //更新Led顯示(在這裡更新效能差了點，不過可以節省很多程式碼)
   //ModeLed
   for (byte j = 0; j < 4; j++) {
-    ledsStatus[LED_B_MODE[j]] = (j == currentMode ? 1 : 0);
+    ledsStatus[MODE_LED_PIN[j]] = (j == currentMode ? 1 : 0);
   }
   //PartLed、CommonLed
   switch (currentMode) {
     case 0:
       for (byte j = 0; j < 8; j++) {
-        ledsStatus[LED_B_PART[j]] = (setsPage[j][currentSet] > 0 ?  1 : 0);
+        ledsStatus[PART_LED_PIN[j]] = (records[j][currentRecord] > 0 ?  1 : 0);
       }
       for (byte j = 0; j < 2; j++) {
-        ledsStatus[LED_B_COMMON[j]] = (commonsPage[j] > 0 ?  1 : 0);
+        ledsStatus[COMMON_LED_PIN[j]] = (commonsRecords[j] > 0 ?  1 : 0);
       }
       break;
     case 1:
       for (byte j = 0; j < 8; j++) {
-        ledsStatus[LED_B_PART[j]] = (setsPage[j][currentSet] > 0 ?  1 : 0);
-        if (j == editingPart) ledsStatus[LED_B_PART[j]] = 2;
+        ledsStatus[PART_LED_PIN[j]] = (records[j][currentRecord] > 0 ?  1 : 0);
+        if (j == editingPart) ledsStatus[PART_LED_PIN[j]] = 2;
       }
       for (byte j = 0; j < 2; j++) {
-        ledsStatus[LED_B_COMMON[j]] = (commonsPage[j] > 0 ?  1 : 0);
-        if (j == editingPart - 8) ledsStatus[LED_B_COMMON[j]] = 2;
+        ledsStatus[COMMON_LED_PIN[j]] = (commonsRecords[j] > 0 ?  1 : 0);
+        if (j == editingPart - 8) ledsStatus[COMMON_LED_PIN[j]] = 2;
       }
       break;
     case 2:
       for (byte j = 0; j < 8; j++) {
-        ledsStatus[LED_B_PART[j]] = (shihtAble[j] ?  2 : 0);
+        ledsStatus[PART_LED_PIN[j]] = (shihtAble[j] ?  2 : 0);
       }
       for (byte j = 0; j < 2; j++) {
-        ledsStatus[LED_B_COMMON[j]] = 0;
+        ledsStatus[COMMON_LED_PIN[j]] = 0;
       }
       break;
     case 3:
       for (byte j = 0; j < 8; j++) {
-        ledsStatus[LED_B_PART[j]] = 0;
+        ledsStatus[PART_LED_PIN[j]] = 0;
       }
       for (byte j = 0; j < 2; j++) {
-        ledsStatus[LED_B_COMMON[j]] = 0;
+        ledsStatus[COMMON_LED_PIN[j]] = 0;
       }
       break;
   }
+
+  //更新LED
   updateLed(nowTime);
 
-  //控制Lcd顯示
+  //更新LCD
   updateLcd(nowTime);
 }
